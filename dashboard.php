@@ -10,38 +10,28 @@ $semester_filter = isset($_GET['semester']) ? $_GET['semester'] : '';
 $school_year_filter = isset($_GET['school_year']) ? $_GET['school_year'] : '';
 
 // ✅ BUILD WHERE CLAUSE BASED ON FILTERS
-// If ONLY school_year is selected, show BOTH semesters for that year
-// If BOTH are selected, show specific semester + year
-// If ONLY semester is selected, show that semester across all years
 $whereClause = "WHERE 1=1";
 
 if (!empty($school_year_filter) && !empty($semester_filter)) {
-    // Both filters: Show specific semester + specific year
     $whereClause .= " AND r.school_year = '$school_year_filter' AND r.semester = '$semester_filter'";
 } elseif (!empty($school_year_filter)) {
-    // Only school year: Show BOTH semesters for that year
     $whereClause .= " AND r.school_year = '$school_year_filter'";
 } elseif (!empty($semester_filter)) {
-    // Only semester: Show that semester across all years
     $whereClause .= " AND r.semester = '$semester_filter'";
 }
 
-// ✅ GET DASHBOARD DATA WITH FILTERS (BASED ON REGISTRATION TABLE)
+// ✅ GET DASHBOARD DATA WITH FILTERS
 $totalStudents = $conn->query("SELECT COUNT(DISTINCT r.students_id) FROM registration r $whereClause")->fetch_row()[0] ?? 0;
 $registrationCollected = $conn->query("SELECT IFNULL(SUM(amount),0) FROM registration r $whereClause AND payment_status='Paid'")->fetch_row()[0] ?? 0;
 $finesCollected = $conn->query("SELECT IFNULL(SUM(penalty_amount),0) FROM fines_payments WHERE payment_status='Paid'")->fetch_row()[0] ?? 0;
 $totalIncome = $registrationCollected + $finesCollected;
-$totalUsers = $conn->query("SELECT COUNT(*) FROM users")->fetch_row()[0] ?? 0;
-
-// Get pending payments with filters
-$pendingPayments = $conn->query("SELECT COUNT(*) FROM registration r $whereClause AND (payment_status='Unpaid' OR payment_status='Partial Paid')")->fetch_row()[0] ?? 0;
 
 // Get recent registrations with filters
-$recent = $conn->query("SELECT sp.FirstName, sp.LastName, sp.Course, r.registration_date 
+$recent = $conn->query("SELECT sp.FirstName, sp.LastName, r.registration_date 
                         FROM registration r 
                         JOIN student_profile sp ON r.students_id = sp.students_id 
                         $whereClause
-                        ORDER BY r.registration_date DESC LIMIT 6");
+                        ORDER BY r.registration_date DESC LIMIT 5");
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -134,8 +124,6 @@ body {
     border-color: #0ea5e9;
     box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
 }
-
-
 
 /* Stats Cards Grid */
 .stats-grid {
@@ -231,18 +219,6 @@ body {
     color: #7c3aed;
 }
 
-.stat-card.red::before { background: #ef4444; }
-.stat-card.red .stat-icon {
-    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-    color: #dc2626;
-}
-
-.stat-card.indigo::before { background: #6366f1; }
-.stat-card.indigo .stat-icon {
-    background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
-    color: #4f46e5;
-}
-
 /* Bottom Section Layout */
 .bottom-grid {
     display: grid;
@@ -318,21 +294,6 @@ body {
 
 .recent-table tbody tr:last-child td {
     border-bottom: none;
-}
-
-.course-badge {
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 11px;
-    background: #dbeafe;
-    color: #1e40af;
-    display: inline-block;
-}
-
-body.dark-mode .course-badge {
-    background: rgba(14, 165, 233, 0.2);
-    color: #38bdf8;
 }
 
 .empty-state {
@@ -493,8 +454,6 @@ body.dark-mode .calendar-table td:hover:not(.empty-cell) {
 .stat-card:nth-child(2) { animation-delay: 0.2s; }
 .stat-card:nth-child(3) { animation-delay: 0.3s; }
 .stat-card:nth-child(4) { animation-delay: 0.4s; }
-.stat-card:nth-child(5) { animation-delay: 0.5s; }
-.stat-card:nth-child(6) { animation-delay: 0.6s; }
 </style>
 </head>
 <body>
@@ -540,7 +499,7 @@ body.dark-mode .calendar-table td:hover:not(.empty-cell) {
                 <i class="fa-solid fa-file-invoice-dollar"></i>
             </div>
             <div class="stat-content">
-                <h3>Registration Fees</h3>
+                <h3>Registration Collected</h3>
                 <div class="stat-value">₱<?= number_format($registrationCollected, 2) ?></div>
             </div>
         </div>
@@ -564,26 +523,6 @@ body.dark-mode .calendar-table td:hover:not(.empty-cell) {
                 <div class="stat-value">₱<?= number_format($totalIncome, 2) ?></div>
             </div>
         </div>
-
-        <div class="stat-card red">
-            <div class="stat-icon">
-                <i class="fa-solid fa-clock"></i>
-            </div>
-            <div class="stat-content">
-                <h3>Pending Payments</h3>
-                <div class="stat-value"><?= number_format($pendingPayments) ?></div>
-            </div>
-        </div>
-
-        <div class="stat-card indigo">
-            <div class="stat-icon">
-                <i class="fa-solid fa-user-shield"></i>
-            </div>
-            <div class="stat-content">
-                <h3>System Users</h3>
-                <div class="stat-value"><?= number_format($totalUsers) ?></div>
-            </div>
-        </div>
     </div>
 
     <!-- Bottom Grid -->
@@ -597,8 +536,7 @@ body.dark-mode .calendar-table td:hover:not(.empty-cell) {
             <table class="recent-table">
                 <thead>
                     <tr>
-                        <th>Student Name</th>
-                        <th>Course</th>
+                        <th>Name</th>
                         <th>Date Registered</th>
                     </tr>
                 </thead>
@@ -607,13 +545,12 @@ body.dark-mode .calendar-table td:hover:not(.empty-cell) {
                         <?php while($r = $recent->fetch_assoc()): ?>
                             <tr>
                                 <td><strong><?= htmlspecialchars($r['FirstName'] . ' ' . $r['LastName']) ?></strong></td>
-                                <td><span class="course-badge"><?= htmlspecialchars($r['Course']) ?></span></td>
                                 <td><?= date('M d, Y', strtotime($r['registration_date'])) ?></td>
                             </tr>
                         <?php endwhile; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="3">
+                            <td colspan="2">
                                 <div class="empty-state">
                                     <i class="fa-solid fa-inbox"></i>
                                     <p>No recent registrations found.</p>
@@ -645,7 +582,7 @@ window.addEventListener('DOMContentLoaded', function() {
 function loadSavedFilters() {
     const urlParams = new URLSearchParams(window.location.search);
     
-    const savedSemester = localStorage.getItem('dashboardSemesterFilter');
+    const savedSemester = localStorage.getItem('userDashboardSemesterFilter');
     const semesterSelect = document.getElementById('semesterFilter');
     
     if (savedSemester && savedSemester !== 'all' && semesterSelect) {
@@ -659,7 +596,7 @@ function loadSavedFilters() {
         }
     }
     
-    const savedSchoolYear = localStorage.getItem('dashboardSchoolYearFilter');
+    const savedSchoolYear = localStorage.getItem('userDashboardSchoolYearFilter');
     const schoolYearSelect = document.getElementById('schoolYearFilter');
     
     if (savedSchoolYear && savedSchoolYear !== 'all' && schoolYearSelect) {
@@ -677,18 +614,18 @@ function loadSavedFilters() {
 function saveSemesterFilter() {
     const semesterValue = document.getElementById('semesterFilter').value;
     if (semesterValue) {
-        localStorage.setItem('dashboardSemesterFilter', semesterValue);
+        localStorage.setItem('userDashboardSemesterFilter', semesterValue);
     } else {
-        localStorage.setItem('dashboardSemesterFilter', 'all');
+        localStorage.setItem('userDashboardSemesterFilter', 'all');
     }
 }
 
 function saveSchoolYearFilter() {
     const schoolYearValue = document.getElementById('schoolYearFilter').value;
     if (schoolYearValue) {
-        localStorage.setItem('dashboardSchoolYearFilter', schoolYearValue);
+        localStorage.setItem('userDashboardSchoolYearFilter', schoolYearValue);
     } else {
-        localStorage.setItem('dashboardSchoolYearFilter', 'all');
+        localStorage.setItem('userDashboardSchoolYearFilter', 'all');
     }
 }
 

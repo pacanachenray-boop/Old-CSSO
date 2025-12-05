@@ -1,6 +1,6 @@
 <?php
 session_start();
-if (!isset($_SESSION['username']) || !in_array($_SESSION['usertype'], ['Governor', 'Vice Governor'])) {
+if (!isset($_SESSION['username']) || !in_array($_SESSION['usertype'], ['Secretary', 'Treasurer', 'Auditor', 'Social Manager', 'Senator', 'Governor', 'Vice Governor'])) {
     header("Location: ../login.php");
     exit();
 }
@@ -90,11 +90,18 @@ $result = $conn->query($sql);
   --text-primary: #1e3a5f;
   --text-secondary: #334155;
   --text-muted: #64748b;
-  --border-color: #e2e8f0;
-  --border-light: #f1f5f9;
+  --border-color: #f1f5f9;
+  --border-color-alt: #e2e8f0;
   --hover-bg: #f0f9ff;
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 3px 12px rgba(0, 0, 0, 0.06);
+  --badge-bg: #e0f2fe;
+  --badge-border: #0ea5e9;
+  --badge-text: #0c4a6e;
+  --course-badge-bg: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+  --course-tag-bg: #dbeafe;
+  --course-tag-text: #1e40af;
+  --empty-icon: #cbd5e1;
 }
 
 body.dark-mode {
@@ -104,10 +111,17 @@ body.dark-mode {
   --text-secondary: #cbd5e1;
   --text-muted: #94a3b8;
   --border-color: #334155;
-  --border-light: #334155;
+  --border-color-alt: #475569;
   --hover-bg: #334155;
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 3px 12px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 3px 12px rgba(0, 0, 0, 0.5);
+  --badge-bg: rgba(14, 165, 233, 0.2);
+  --badge-border: #38bdf8;
+  --badge-text: #38bdf8;
+  --course-badge-bg: linear-gradient(135deg, rgba(14, 165, 233, 0.2) 0%, rgba(14, 165, 233, 0.15) 100%);
+  --course-tag-bg: rgba(14, 165, 233, 0.2);
+  --course-tag-text: #38bdf8;
+  --empty-icon: #475569;
 }
 
 body {
@@ -131,11 +145,8 @@ body {
   gap: 14px;
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 3px solid #e0f2fe;
-}
-
-body.dark-mode .page-header {
-  border-bottom-color: #334155;
+  border-bottom: 3px solid var(--badge-bg);
+  transition: border-color 0.3s ease;
 }
 
 .page-header i {
@@ -181,7 +192,7 @@ body.dark-mode .page-header {
 .filters input[type="text"] {
   padding: 10px 14px;
   border-radius: 8px;
-  border: 2px solid var(--border-color);
+  border: 2px solid var(--border-color-alt);
   font-size: 14px;
   outline: none;
   transition: all 0.3s ease;
@@ -248,27 +259,20 @@ body.dark-mode .page-header {
 
 /* Course Badge */
 .course-badge {
-  background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+  background: var(--course-badge-bg);
   padding: 12px 20px;
   border-radius: 10px;
   text-align: center;
   margin-bottom: 16px;
-  border-left: 4px solid #0ea5e9;
-  transition: background 0.3s ease;
-}
-
-body.dark-mode .course-badge {
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(2, 132, 199, 0.15) 100%);
+  border-left: 4px solid var(--badge-border);
+  transition: all 0.3s ease;
 }
 
 .course-badge h3 {
   font-size: 17px;
-  color: #0c4a6e;
+  color: var(--badge-text);
   font-weight: 600;
-}
-
-body.dark-mode .course-badge h3 {
-  color: #38bdf8;
+  transition: color 0.3s ease;
 }
 
 /* Table Container */
@@ -301,7 +305,7 @@ th {
 
 td {
   padding: 14px;
-  border-bottom: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
   font-size: 14px;
   transition: color 0.3s ease, border-color 0.3s ease;
@@ -320,19 +324,15 @@ tbody tr:last-child td {
   border-bottom: none;
 }
 
-/* Course Badge in Table */
+/* Course Tag in Table */
 .course-tag {
-  background: #dbeafe;
+  background: var(--course-tag-bg);
   padding: 4px 10px;
   border-radius: 6px;
   font-weight: 600;
-  color: #1e40af;
+  color: var(--course-tag-text);
   display: inline-block;
-}
-
-body.dark-mode .course-tag {
-  background: rgba(14, 165, 233, 0.2);
-  color: #38bdf8;
+  transition: all 0.3s ease;
 }
 
 /* Action Buttons */
@@ -383,9 +383,9 @@ body.dark-mode .course-tag {
 
 .empty-state i {
   font-size: 48px;
-  color: var(--text-muted);
+  color: var(--empty-icon);
   margin-bottom: 12px;
-  opacity: 0.5;
+  transition: color 0.3s ease;
 }
 
 /* Responsive */
@@ -516,7 +516,7 @@ body.dark-mode .course-tag {
 </div>
 
 <script>
-// Dark mode sync with parent
+// Dark Mode Sync
 function syncDarkMode() {
     try {
         if (window.parent && window.parent.document.body.classList.contains('dark-mode')) {
@@ -532,7 +532,6 @@ function syncDarkMode() {
     }
 }
 
-// Listen for theme changes
 window.addEventListener('message', function(event) {
     if (event.data.type === 'themeChange') {
         if (event.data.theme === 'dark') {

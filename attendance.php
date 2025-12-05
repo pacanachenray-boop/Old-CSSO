@@ -1,6 +1,6 @@
 <?php
 session_start();
-if (!isset($_SESSION['username']) || !in_array($_SESSION['usertype'], ['Social Manager', 'Senator',])) {
+if (!isset($_SESSION['username']) || !in_array($_SESSION['usertype'], ['Secretary', 'Treasurer', 'Auditor', 'Social Manager', 'Senator', 'Governor', 'Vice Governor'])) {
     header("Location: ../login.php");
     exit();
 }
@@ -22,22 +22,31 @@ $sql = "SELECT
     e.location,
     e.Time_Session,
     e.YearLevel,
+    e.Semester,
+    e.school_year,
     COUNT(a.attendance_id) as total_attendance,
     COUNT(DISTINCT a.students_id) as unique_students
 FROM event e
 LEFT JOIN attendance a ON e.event_Name = a.event_name AND e.event_Date = a.event_date
-GROUP BY e.event_Name, e.event_Date, e.location, e.Time_Session, e.YearLevel
+GROUP BY e.event_Name, e.event_Date, e.location, e.Time_Session, e.YearLevel, e.Semester, e.school_year
 ORDER BY e.event_Date DESC";
 
 $result = $conn->query($sql);
 
+// Get unique semesters and school years for filters
+$semestersQuery = "SELECT DISTINCT Semester FROM event WHERE Semester IS NOT NULL AND Semester != '' ORDER BY Semester";
+$schoolYearsQuery = "SELECT DISTINCT school_year FROM event WHERE school_year IS NOT NULL AND school_year != '' ORDER BY school_year DESC";
+
+$semesters = $conn->query($semestersQuery);
+$schoolYears = $conn->query($schoolYearsQuery);
+
 // Year Level Display Mapping
 function formatYearLevel($yearLevel) {
     $mapping = [
-        '1stYear' => '1st Year',
-        '2ndYear' => '2nd Year',
-        '3rdYear' => '3rd Year',
-        '4thYear' => '4th Year',
+        '1stYearLevel' => '1st Year',
+        '2ndYearLevel' => '2nd Year',
+        '3rdYearLevel' => '3rd Year',
+        '4thYearLevel' => '4th Year',
         'AllLevels' => 'All Levels'
     ];
     return $mapping[$yearLevel] ?? $yearLevel;
@@ -128,7 +137,7 @@ body {
   color: #0ea5e9;
 }
 
-/* Controls Section - Search Only */
+/* Controls Section */
 .controls {
   background: white;
   padding: 20px;
@@ -137,10 +146,18 @@ body {
   margin-bottom: 20px;
 }
 
+.filters-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 /* Search Bar */
 .search-container {
   position: relative;
-  max-width: 100%;
+  flex: 1;
+  min-width: 250px;
 }
 
 .search-input {
@@ -167,6 +184,37 @@ body {
   transform: translateY(-50%);
   color: #64748b;
   pointer-events: none;
+}
+
+/* Filter Dropdowns */
+.filter-group {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filter-select {
+  padding: 10px 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #f8fafc;
+  color: #1e3a5f;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 180px;
+  font-weight: 500;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: #0ea5e9;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
+
+.filter-select:hover {
+  border-color: #0ea5e9;
 }
 
 /* Events Grid */
@@ -257,6 +305,14 @@ body {
 
 .event-detail-row i.fa-users {
   color: #8b5cf6;
+}
+
+.event-detail-row i.fa-calendar-alt {
+  color: #10b981;
+}
+
+.event-detail-row i.fa-book {
+  color: #0ea5e9;
 }
 
 .event-detail-row span {
@@ -380,6 +436,23 @@ body {
     grid-template-columns: 1fr;
   }
   
+  .filters-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .search-container {
+    min-width: 100%;
+  }
+  
+  .filter-group {
+    width: 100%;
+  }
+  
+  .filter-select {
+    width: 100%;
+  }
+  
   .event-stats {
     grid-template-columns: 1fr;
   }
@@ -423,15 +496,38 @@ body {
         </div>
     </div>
 
-    <!-- Controls - Search Only -->
+    <!-- Controls -->
     <div class="controls">
-        <div class="search-container">
-            <input type="text" 
-                   class="search-input" 
-                   id="searchInput" 
-                   placeholder="Search events by name, location, or year level..."
-                   onkeyup="filterEvents()">
-            <i class="fa fa-search search-icon"></i>
+        <div class="filters-row">
+            <div class="search-container">
+                <input type="text" 
+                       class="search-input" 
+                       id="searchInput" 
+                       placeholder="Search events by name, location, or year level..."
+                       onkeyup="filterEvents()">
+                <i class="fa fa-search search-icon"></i>
+            </div>
+            <div class="filter-group">
+                <select class="filter-select" id="semesterFilter" onchange="saveSemesterFilter()">
+                    <option value="all">All Semesters</option>
+                    <?php while($sem = $semesters->fetch_assoc()): ?>
+                        <option value="<?= htmlspecialchars($sem['Semester']) ?>">
+                            <?= htmlspecialchars($sem['Semester']) ?>
+                        </option>
+                    <?php endwhile; ?>
+                </select>
+                
+                <select class="filter-select" id="schoolYearFilter" onchange="saveSchoolYearFilter()">
+                    <option value="all">All School Years</option>
+                    <?php 
+                    // Generate school years from 2024-2025 to 2033-2034
+                    for($year = 2024; $year <= 2033; $year++) {
+                        $schoolYear = $year . '-' . ($year + 1);
+                        echo '<option value="' . $schoolYear . '">' . $schoolYear . '</option>';
+                    }
+                    ?>
+                </select>
+            </div>
         </div>
     </div>
 
@@ -443,6 +539,8 @@ body {
                      data-event-name="<?= htmlspecialchars(strtolower($event['event_Name'])) ?>"
                      data-location="<?= htmlspecialchars(strtolower($event['location'] ?: '')) ?>"
                      data-year-level="<?= htmlspecialchars(strtolower(formatYearLevel($event['YearLevel']))) ?>"
+                     data-semester="<?= htmlspecialchars($event['Semester'] ?: '') ?>"
+                     data-school-year="<?= htmlspecialchars($event['school_year'] ?: '') ?>"
                      onclick="viewEventAttendance('<?= htmlspecialchars($event['event_Name']) ?>', '<?= $event['event_Date'] ?>')">
                     <div class="event-header">
                         <h3><?= htmlspecialchars($event['event_Name']) ?></h3>
@@ -455,7 +553,7 @@ body {
                         <div class="event-info">
                             <div class="event-detail-row">
                                 <i class="fa fa-map-marker-alt"></i>
-                                <span><?= htmlspecialchars($event['location'] ?: 'No location specified') ?></span>
+                                <span><?= htmlspecialchars($event['location'] ?: 'No location') ?></span>
                             </div>
                             <div class="event-detail-row">
                                 <i class="fa fa-clock"></i>
@@ -464,6 +562,14 @@ body {
                             <div class="event-detail-row">
                                 <i class="fa fa-users"></i>
                                 <span><?= formatYearLevel($event['YearLevel']) ?></span>
+                            </div>
+                            <div class="event-detail-row">
+                                <i class="fa fa-book"></i>
+                                <span><?= htmlspecialchars($event['Semester']) ?></span>
+                            </div>
+                            <div class="event-detail-row">
+                                <i class="fa fa-calendar-alt"></i>
+                                <span><?= htmlspecialchars($event['school_year']) ?></span>
                             </div>
                         </div>
                         
@@ -492,13 +598,13 @@ body {
             <div class="no-results" id="noResults">
                 <i class="fa fa-search"></i>
                 <h3>No Events Found</h3>
-                <p>Try adjusting your search terms.</p>
+                <p>Try adjusting your search or filter options.</p>
             </div>
         <?php else: ?>
             <div class="empty-state">
                 <i class="fa fa-calendar-times"></i>
                 <h3>No Events Found</h3>
-                <p>There are currently no events available.</p>
+                <p>There are currently no events in the system.</p>
             </div>
         <?php endif; ?>
     </div>
@@ -508,8 +614,44 @@ body {
 const totalEventsEl = document.getElementById('totalEvents');
 const originalTotal = totalEventsEl ? parseInt(totalEventsEl.textContent) : 0;
 
+// Load saved filters when page loads
+window.addEventListener('DOMContentLoaded', function() {
+    loadSavedFilters();
+});
+
+function loadSavedFilters() {
+    // Get saved semester filter
+    const savedSemester = localStorage.getItem('semesterFilter');
+    if (savedSemester) {
+        document.getElementById('semesterFilter').value = savedSemester;
+    }
+    
+    // Get saved school year filter
+    const savedSchoolYear = localStorage.getItem('schoolYearFilter');
+    if (savedSchoolYear) {
+        document.getElementById('schoolYearFilter').value = savedSchoolYear;
+    }
+    
+    // Apply filters
+    filterEvents();
+}
+
+function saveSemesterFilter() {
+    const semesterValue = document.getElementById('semesterFilter').value;
+    localStorage.setItem('semesterFilter', semesterValue);
+    filterEvents();
+}
+
+function saveSchoolYearFilter() {
+    const schoolYearValue = document.getElementById('schoolYearFilter').value;
+    localStorage.setItem('schoolYearFilter', schoolYearValue);
+    filterEvents();
+}
+
 function filterEvents() {
     const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+    const semesterFilter = document.getElementById('semesterFilter').value;
+    const schoolYearFilter = document.getElementById('schoolYearFilter').value;
     const eventCards = document.querySelectorAll('.event-card');
     const noResults = document.getElementById('noResults');
     let visibleCount = 0;
@@ -518,12 +660,23 @@ function filterEvents() {
         const eventName = card.getAttribute('data-event-name') || '';
         const location = card.getAttribute('data-location') || '';
         const yearLevel = card.getAttribute('data-year-level') || '';
+        const semester = card.getAttribute('data-semester') || '';
+        const schoolYear = card.getAttribute('data-school-year') || '';
         
-        const matches = eventName.includes(searchTerm) || 
-                       location.includes(searchTerm) || 
-                       yearLevel.includes(searchTerm);
+        // Check search term
+        const matchesSearch = searchTerm === '' || 
+                             eventName.includes(searchTerm) || 
+                             location.includes(searchTerm) || 
+                             yearLevel.includes(searchTerm);
         
-        if (matches) {
+        // Check semester filter
+        const matchesSemester = semesterFilter === 'all' || semester === semesterFilter;
+        
+        // Check school year filter
+        const matchesSchoolYear = schoolYearFilter === 'all' || schoolYear === schoolYearFilter;
+        
+        // Show card only if ALL filters match
+        if (matchesSearch && matchesSemester && matchesSchoolYear) {
             card.classList.remove('hidden');
             visibleCount++;
         } else {
@@ -538,7 +691,7 @@ function filterEvents() {
     
     // Show/hide no results message
     if (noResults) {
-        if (visibleCount === 0 && searchTerm !== '') {
+        if (visibleCount === 0) {
             noResults.style.display = 'block';
         } else {
             noResults.style.display = 'none';

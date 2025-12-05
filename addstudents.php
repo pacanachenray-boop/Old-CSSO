@@ -1,6 +1,6 @@
 <?php
 session_start();
-if (!isset($_SESSION['username']) || !in_array($_SESSION['usertype'], ['Governor', 'Vice Governor'])) {
+if (!isset($_SESSION['username']) || !in_array($_SESSION['usertype'], ['Secretary', 'Treasurer', 'Auditor', 'Social Manager', 'Senator', 'Governor', 'Vice Governor'])) {
     header("Location: ../login.php");
     exit();
 }
@@ -16,93 +16,79 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $user_id = $_SESSION['user_id'];
     $students_id = $_POST['students_id'];
 
-    // Validate Student ID - exactly 6 digits
-    if (!preg_match('/^\d{6}$/', $students_id)) {
+    // Start Transaction
+    $conn->begin_transaction();
+
+    try {
+        // ====== 1. INSERT INTO student_profile ======
+        $stmt = $conn->prepare("INSERT INTO student_profile 
+            (students_id, user_id, FirstName, LastName, MI, Suffix, Course, YearLevel, Section, PhoneNumber, Gender, DOB, Age, Religion, EmailAddress, Street, Barangay, Municipality, Province, Zipcode)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param(
+            "iissssssssssisssssss",
+            $students_id, $user_id, $_POST['FirstName'], $_POST['LastName'], $_POST['MI'], $_POST['Suffix'],
+            $_POST['Course'], $_POST['YearLevel'], $_POST['Section'], $_POST['PhoneNumber'],
+            $_POST['Gender'], $_POST['DOB'], $_POST['Age'], $_POST['Religion'],
+            $_POST['EmailAddress'], $_POST['Street'], $_POST['Barangay'],
+            $_POST['Municipality'], $_POST['Province'], $_POST['ZipCode']
+        );
+        $stmt->execute();
+
+        // ====== 2. INSERT INTO family_background ======
+        $stmt2 = $conn->prepare("INSERT INTO family_background 
+            (students_id, father_name, father_occupation, mother_name, mother_occupation, phone_number, siblings_count, guardian_name, guardian_occupation, contact_number, street, barangay, municipality, province, zipcode)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt2->bind_param(
+            "issssssisssssss",
+            $students_id,
+            $_POST['father_name'], $_POST['father_occupation'], $_POST['mother_name'], $_POST['mother_occupation'],
+            $_POST['phone_number'], $_POST['siblings_count'], $_POST['guardian_name'], $_POST['guardian_occupation'],
+            $_POST['contact_number'], $_POST['fam_street'], $_POST['fam_barangay'],
+            $_POST['fam_municipality'], $_POST['fam_province'], $_POST['fam_zipcode']
+        );
+        $stmt2->execute();
+
+        // ====== 3. INSERT INTO educational_background ======
+        $stmt3 = $conn->prepare("INSERT INTO educational_background 
+            (students_id, elementary, elem_year_grad, elem_received, junior_high, jr_high_grad, jr_received, senior_high, sr_high_grad, sr_received)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt3->bind_param(
+            "isssssssss",
+            $students_id,
+            $_POST['elementary'], $_POST['elem_year_grad'], $_POST['elem_received'],
+            $_POST['junior_high'], $_POST['jr_high_grad'], $_POST['jr_received'],
+            $_POST['senior_high'], $_POST['sr_high_grad'], $_POST['sr_received']
+        );
+        $stmt3->execute();
+
+        // Commit all
+        $conn->commit();
+
         echo "<script>
         document.addEventListener('DOMContentLoaded', function() {
             Swal.fire({
-                title: 'Invalid Student ID!',
-                text: 'Student ID must be exactly 6 digits.',
+                title: 'Success!',
+                text: 'Student successfully added!',
+                icon: 'success',
+                confirmButtonColor: '#0ea5e9'
+            }).then(() => {
+                window.location = 'students.php';
+            });
+        });
+        </script>";
+
+    } catch (Exception $e) {
+        $conn->rollback();
+        echo "<script>
+        document.addEventListener('DOMContentLoaded', function() {
+            Swal.fire({
+                title: 'Error!',
+                text: 'Error saving student data: " . addslashes($e->getMessage()) . "',
                 icon: 'error',
                 confirmButtonColor: '#ef4444'
             });
         });
         </script>";
-    } else {
-        // Start Transaction
-        $conn->begin_transaction();
-
-        try {
-            // ====== 1. INSERT INTO student_profile ======
-            $stmt = $conn->prepare("INSERT INTO student_profile 
-                (students_id, user_id, FirstName, LastName, MI, Suffix, Course, YearLevel, Section, PhoneNumber, Gender, DOB, Age, Religion, EmailAddress, Street, Barangay, Municipality, Province, Zipcode)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param(
-                "iissssssssssisssssss",
-                $students_id, $user_id, $_POST['FirstName'], $_POST['LastName'], $_POST['MI'], $_POST['Suffix'],
-                $_POST['Course'], $_POST['YearLevel'], $_POST['Section'], $_POST['PhoneNumber'],
-                $_POST['Gender'], $_POST['DOB'], $_POST['Age'], $_POST['Religion'],
-                $_POST['EmailAddress'], $_POST['Street'], $_POST['Barangay'],
-                $_POST['Municipality'], $_POST['Province'], $_POST['ZipCode']
-            );
-            $stmt->execute();
-
-            // ====== 2. INSERT INTO family_background ======
-            $stmt2 = $conn->prepare("INSERT INTO family_background 
-                (students_id, father_name, father_occupation, mother_name, mother_occupation, phone_number, siblings_count, guardian_name, guardian_occupation, contact_number, street, barangay, municipality, province, zipcode)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt2->bind_param(
-                "issssssisssssss",
-                $students_id,
-                $_POST['father_name'], $_POST['father_occupation'], $_POST['mother_name'], $_POST['mother_occupation'],
-                $_POST['phone_number'], $_POST['siblings_count'], $_POST['guardian_name'], $_POST['guardian_occupation'],
-                $_POST['contact_number'], $_POST['fam_street'], $_POST['fam_barangay'],
-                $_POST['fam_municipality'], $_POST['fam_province'], $_POST['fam_zipcode']
-            );
-            $stmt2->execute();
-
-            // ====== 3. INSERT INTO educational_background ======
-            $stmt3 = $conn->prepare("INSERT INTO educational_background 
-                (students_id, elementary, elem_year_grad, elem_received, junior_high, jr_high_grad, jr_received, senior_high, sr_high_grad, sr_received)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt3->bind_param(
-                "isssssssss",
-                $students_id,
-                $_POST['elementary'], $_POST['elem_year_grad'], $_POST['elem_received'],
-                $_POST['junior_high'], $_POST['jr_high_grad'], $_POST['jr_received'],
-                $_POST['senior_high'], $_POST['sr_high_grad'], $_POST['sr_received']
-            );
-            $stmt3->execute();
-
-            // Commit all
-            $conn->commit();
-
-            echo "<script>
-            document.addEventListener('DOMContentLoaded', function() {
-                Swal.fire({
-                    title: 'Success!',
-                    text: 'Student successfully added!',
-                    icon: 'success',
-                    confirmButtonColor: '#0ea5e9'
-                }).then(() => {
-                    window.location = 'students.php';
-                });
-            });
-            </script>";
-
-        } catch (Exception $e) {
-            $conn->rollback();
-            echo "<script>
-            document.addEventListener('DOMContentLoaded', function() {
-                Swal.fire({
-                    title: 'Error!',
-                    text: 'Error saving student data: " . addslashes($e->getMessage()) . "',
-                    icon: 'error',
-                    confirmButtonColor: '#ef4444'
-                });
-            });
-            </script>";
-        }
     }
 }
 ?>
@@ -121,53 +107,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   box-sizing: border-box;
 }
 
-:root {
-  --bg-primary: #f0f4f8;
-  --bg-secondary: #ffffff;
-  --bg-section: #f8fafc;
-  --text-primary: #1e3a5f;
-  --text-secondary: #334155;
-  --text-muted: #64748b;
-  --border-color: #e2e8f0;
-  --border-section: #e0f2fe;
-  --input-bg: #ffffff;
-  --input-readonly: #f1f5f9;
-}
-
-body.dark-mode {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-section: #1e293b;
-  --text-primary: #f1f5f9;
-  --text-secondary: #cbd5e1;
-  --text-muted: #94a3b8;
-  --border-color: #334155;
-  --border-section: #334155;
-  --input-bg: #0f172a;
-  --input-readonly: #1e293b;
-}
-
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: #f0f4f8;
+  color: #1e3a5f;
   padding: 24px 0;
-  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .container {
   width: 95%;
   max-width: 1000px;
   margin: 0 auto;
-  background: var(--bg-secondary);
+  background: white;
   border-radius: 12px;
   padding: 30px;
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.06);
-  transition: background-color 0.3s ease, box-shadow 0.3s ease;
-}
-
-body.dark-mode .container {
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
 }
 
 /* Header */
@@ -177,8 +131,7 @@ body.dark-mode .container {
   gap: 14px;
   margin-bottom: 30px;
   padding-bottom: 20px;
-  border-bottom: 3px solid var(--border-section);
-  transition: border-color 0.3s ease;
+  border-bottom: 3px solid #e0f2fe;
 }
 
 .page-header i {
@@ -193,33 +146,27 @@ body.dark-mode .container {
 .page-header h2 {
   font-size: 26px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: #1e3a5f;
   letter-spacing: -0.3px;
-  transition: color 0.3s ease;
 }
 
 /* Form Sections */
 section {
   margin-bottom: 35px;
   padding: 25px;
-  background: var(--bg-section);
+  background: #f8fafc;
   border-radius: 10px;
   border-left: 4px solid #0ea5e9;
-  transition: background-color 0.3s ease;
 }
 
 section h3 {
-  color: #0ea5e9;
+  color: #0c4a6e;
   font-size: 18px;
   font-weight: 600;
   margin-bottom: 20px;
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-body.dark-mode section h3 {
-  color: #38bdf8;
 }
 
 section h3::before {
@@ -248,10 +195,9 @@ section h3::before {
 
 label {
   font-weight: 600;
-  color: var(--text-secondary);
+  color: #334155;
   margin-bottom: 6px;
   font-size: 14px;
-  transition: color 0.3s ease;
 }
 
 label .required {
@@ -262,13 +208,13 @@ label .required {
 input, select, textarea {
   width: 100%;
   padding: 10px 14px;
-  border: 2px solid var(--border-color);
+  border: 2px solid #e2e8f0;
   border-radius: 8px;
   font-size: 14px;
   font-family: inherit;
   transition: all 0.3s ease;
-  background: var(--input-bg);
-  color: var(--text-secondary);
+  background: white;
+  color: #334155;
 }
 
 input:focus, select:focus, textarea:focus {
@@ -278,8 +224,8 @@ input:focus, select:focus, textarea:focus {
 }
 
 input[readonly] {
-  background: var(--input-readonly);
-  color: var(--text-muted);
+  background: #f1f5f9;
+  color: #64748b;
   cursor: not-allowed;
 }
 
@@ -292,10 +238,6 @@ select {
   padding-right: 36px;
 }
 
-body.dark-mode select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23cbd5e1' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
-}
-
 /* Buttons */
 .form-actions {
   display: flex;
@@ -304,8 +246,7 @@ body.dark-mode select {
   gap: 12px;
   margin-top: 35px;
   padding-top: 25px;
-  border-top: 2px solid var(--border-color);
-  transition: border-color 0.3s ease;
+  border-top: 2px solid #e2e8f0;
 }
 
 .btn {
@@ -355,28 +296,11 @@ body.dark-mode select {
   gap: 12px;
   color: #0c4a6e;
   font-size: 14px;
-  transition: background 0.3s ease, color 0.3s ease;
-}
-
-body.dark-mode .info-banner {
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(2, 132, 199, 0.15) 100%);
-  color: #38bdf8;
 }
 
 .info-banner i {
   font-size: 18px;
   color: #0ea5e9;
-}
-
-body.dark-mode .info-banner i {
-  color: #38bdf8;
-}
-
-body.dark-mode input::placeholder,
-body.dark-mode select::placeholder,
-body.dark-mode textarea::placeholder {
-  color: #64748b;
-  opacity: 1;
 }
 
 /* Responsive */
@@ -401,41 +325,13 @@ body.dark-mode textarea::placeholder {
   }
 }
 
+/* Loading State */
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 </style>
 <script>
-// Dark mode sync
-function syncDarkMode() {
-    try {
-        if (window.parent && window.parent.document.body.classList.contains('dark-mode')) {
-            document.body.classList.add('dark-mode');
-        } else {
-            document.body.classList.remove('dark-mode');
-        }
-    } catch (e) {
-        const savedTheme = localStorage.getItem('theme');
-        if (savedTheme === 'dark') {
-            document.body.classList.add('dark-mode');
-        }
-    }
-}
-
-window.addEventListener('message', function(event) {
-    if (event.data.type === 'themeChange') {
-        if (event.data.theme === 'dark') {
-            document.body.classList.add('dark-mode');
-        } else {
-            document.body.classList.remove('dark-mode');
-        }
-    }
-});
-
-syncDarkMode();
-setInterval(syncDarkMode, 500);
-
 function calculateAge() {
     const dob = document.querySelector('input[name="DOB"]').value;
     if(dob){
@@ -446,101 +342,19 @@ function calculateAge() {
     }
 }
 
-// Section options based on year level and course
-const sectionOptions = {
-    '1stYear': {
-        'BSIT': ['BSIT 1A', 'BSIT 1B'],
-        'BSCS': ['BSCS 1A', 'BSCS 1B']
-    },
-    '2ndYear': {
-        'BSIT': ['BSIT 2A', 'BSIT 2B'],
-        'BSCS': ['BSCS 2A', 'BSCS 2B']
-    },
-    '3rdYear': {
-        'BSIT': ['BSIT 3A', 'BSIT 3B'],
-        'BSCS': ['BSCS 3A', 'BSCS 3B']
-    },
-    '4thYear': {
-        'BSIT': ['BSIT 4A', 'BSIT 4B'],
-        'BSCS': ['BSCS 4A', 'BSCS 4B']
-    }
-};
-
-function updateSections() {
-    const yearLevel = document.querySelector('select[name="YearLevel"]').value;
-    const course = document.querySelector('select[name="Course"]').value;
-    const sectionSelect = document.querySelector('select[name="Section"]');
-    
-    // Clear existing options except the first one
-    sectionSelect.innerHTML = '<option value="">Select Section</option>';
-    
-    if (yearLevel && course && sectionOptions[yearLevel] && sectionOptions[yearLevel][course]) {
-        sectionOptions[yearLevel][course].forEach(section => {
-            const option = document.createElement('option');
-            option.value = section;
-            option.textContent = section;
-            sectionSelect.appendChild(option);
-        });
-    }
-}
-
-// Student ID validation - exactly 6 digits
-function validateStudentId() {
-    const studentIdInput = document.querySelector('input[name="students_id"]');
-    const studentId = studentIdInput.value;
-    
-    if (studentId && !/^\d{6}$/.test(studentId)) {
-        studentIdInput.style.borderColor = '#ef4444';
-        return false;
-    } else {
-        studentIdInput.style.borderColor = '';
-        return true;
-    }
-}
-
+// Form validation before submit
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.querySelector('form');
-    
-    // Add event listeners for year level and course changes
-    document.querySelector('select[name="YearLevel"]').addEventListener('change', updateSections);
-    document.querySelector('select[name="Course"]').addEventListener('change', updateSections);
-    
-    // Add event listener for student ID validation
-    document.querySelector('input[name="students_id"]').addEventListener('input', validateStudentId);
-    
     form.addEventListener('submit', function(e) {
         const studentId = document.querySelector('input[name="students_id"]').value;
-        
-        // Validate Student ID - exactly 6 digits
-        if (!/^\d{6}$/.test(studentId)) {
+        if (!studentId || studentId.length < 3) {
             e.preventDefault();
             Swal.fire({
-                title: 'Invalid Student ID!',
-                text: 'Student ID must be exactly 6 digits.',
+                title: 'Invalid Student ID',
+                text: 'Please enter a valid student ID.',
                 icon: 'warning',
                 confirmButtonColor: '#0ea5e9'
             });
-            return;
-        }
-        
-        // Validate Year Level and Section match
-        const yearLevel = document.querySelector('select[name="YearLevel"]').value;
-        const section = document.querySelector('select[name="Section"]').value;
-        const course = document.querySelector('select[name="Course"]').value;
-        
-        if (yearLevel && section && course) {
-            const expectedSections = sectionOptions[yearLevel] && sectionOptions[yearLevel][course] ? sectionOptions[yearLevel][course] : [];
-            
-            if (!expectedSections.includes(section)) {
-                e.preventDefault();
-                Swal.fire({
-                    title: 'Invalid Section!',
-                    text: `Section ${section} does not match with ${yearLevel} and ${course}. Please select a valid section.`,
-                    icon: 'warning',
-                    confirmButtonColor: '#0ea5e9'
-                });
-                return;
-            }
         }
     });
 });
@@ -548,25 +362,26 @@ document.addEventListener('DOMContentLoaded', function() {
 </head>
 <body>
 <div class="container">
+    <!-- Header -->
     <div class="page-header">
         <i class="fa-solid fa-user-plus"></i>
         <h2>Add New Student</h2>
     </div>
 
+    <!-- Info Banner -->
     <div class="info-banner">
         <i class="fa-solid fa-circle-info"></i>
         <span>Fill out all required fields marked with <strong style="color: #ef4444;">*</strong> to add a new student to the system.</span>
     </div>
 
     <form method="POST">
+        <!-- STUDENT PROFILE -->
         <section>
             <h3><i class="fa-solid fa-user" style="color: #0ea5e9;"></i> Student Profile</h3>
             <div class="form-grid">
                 <div class="form-group">
                     <label>Student ID <span class="required">*</span></label>
-                    <input type="number" name="students_id" required placeholder="Enter 6-digit student ID" 
-                           min="100000" max="999999" oninput="validateStudentId()">
-                    <small style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">Must be exactly 6 digits</small>
+                    <input type="number" name="students_id" required placeholder="Enter student ID">
                 </div>
                 <div class="form-group">
                     <label>First Name <span class="required">*</span></label>
@@ -609,7 +424,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <div class="form-group">
                     <label>Course <span class="required">*</span></label>
-                    <select name="Course" required onchange="updateSections()">
+                    <select name="Course" required>
                         <option value="">Select Course</option>
                         <option value="BSIT">BSIT</option>
                         <option value="BSCS">BSCS</option>
@@ -617,7 +432,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <div class="form-group">
                     <label>Year Level <span class="required">*</span></label>
-                    <select name="YearLevel" required onchange="updateSections()">
+                    <select name="YearLevel" required>
                         <option value="">Select Year Level</option>
                         <option value="1stYear">1st Year</option>
                         <option value="2ndYear">2nd Year</option>
@@ -629,7 +444,22 @@ document.addEventListener('DOMContentLoaded', function() {
                     <label>Section <span class="required">*</span></label>
                     <select name="Section" required>
                         <option value="">Select Section</option>
-                        <!-- Sections will be dynamically populated based on Year Level and Course -->
+                        <option value="BSIT 1A">BSIT 1A</option>
+                        <option value="BSIT 1B">BSIT 1B</option>
+                        <option value="BSIT 2A">BSIT 2A</option>
+                        <option value="BSIT 2B">BSIT 2B</option>
+                        <option value="BSIT 3A">BSIT 3A</option>
+                        <option value="BSIT 3B">BSIT 3B</option>
+                        <option value="BSIT 4A">BSIT 4A</option>
+                        <option value="BSIT 4B">BSIT 4B</option>
+                        <option value="BSCS 1A">BSCS 1A</option>
+                        <option value="BSCS 1B">BSCS 1B</option>
+                        <option value="BSCS 2A">BSCS 2A</option>
+                        <option value="BSCS 2B">BSCS 2B</option>
+                        <option value="BSCS 3A">BSCS 3A</option>
+                        <option value="BSCS 3B">BSCS 3B</option>
+                        <option value="BSCS 4A">BSCS 4A</option>
+                        <option value="BSCS 4B">BSCS 4B</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -667,6 +497,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         </section>
 
+        <!-- FAMILY BACKGROUND -->
         <section>
             <h3><i class="fa-solid fa-users" style="color: #0ea5e9;"></i> Family Background</h3>
             <div class="form-grid">
@@ -729,6 +560,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         </section>
 
+        <!-- EDUCATIONAL BACKGROUND -->
         <section>
             <h3><i class="fa-solid fa-graduation-cap" style="color: #0ea5e9;"></i> Educational Background</h3>
             <div class="form-grid">
@@ -771,6 +603,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         </section>
 
+        <!-- Action Buttons -->
         <div class="form-actions">
             <button type="button" class="btn btn-back" onclick="window.location.href='students.php'">
                 <i class="fa fa-arrow-left"></i> Back to List

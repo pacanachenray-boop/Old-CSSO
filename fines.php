@@ -16,9 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     
     $students_id = $_POST['students_id'] ?? '';
     $selected_fines = json_decode($_POST['selected_fines'] ?? '[]', true);
-    $total_hours = floatval($_POST['total_hours'] ?? 0);
     
-    if (empty($students_id) || empty($selected_fines) || $total_hours <= 0) {
+    if (empty($students_id) || empty($selected_fines)) {
         echo json_encode(['success' => false, 'message' => 'Invalid service data']);
         exit();
     }
@@ -27,9 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $conn->begin_transaction();
     
     try {
-        // Updated INSERT - removed hours_completed from query
-        $insert_service_sql = "INSERT INTO comservice (fines_id, students_id, penalty_amount, total_hours, service_date, status, discount) 
-                               VALUES (?, ?, ?, ?, ?, 'Ongoing', ?)";
+        $insert_service_sql = "INSERT INTO comservice (fines_id, students_id, penalty_amount, total_hours, hours_completed, service_date, status, discount) 
+                               VALUES (?, ?, ?, 0, 0, ?, 'Ongoing', ?)";
         
         $update_fine_sql = "UPDATE fines SET PenaltyAmount = ? WHERE fines_id = ?";
         
@@ -47,8 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             
             $new_penalty_amount = $penalty_amount - $discount_amount;
             
-            // Updated binding - changed from "isdsd" to "isddsd"
-            $insert_stmt->bind_param("isddsd", $fines_id, $students_id, $penalty_amount, $total_hours, $service_date, $discount_amount);
+            $insert_stmt->bind_param("isdsd", $fines_id, $students_id, $penalty_amount, $service_date, $discount_amount);
             
             if (!$insert_stmt->execute()) {
                 throw new Exception("Failed to insert service record for fine ID: " . $fines_id);
@@ -68,8 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         echo json_encode([
             'success' => true, 
             'message' => 'Service discount applied successfully!',
-            'fines_processed' => count($selected_fines),
-            'total_hours' => $total_hours
+            'fines_processed' => count($selected_fines)
         ]);
         
     } catch (Exception $e) {
@@ -280,7 +276,7 @@ function getCourseName($course) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fines Payments | CSSO</title>
+<title>Fines Records | CSSO</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
@@ -639,7 +635,7 @@ tbody tr:last-child td {
 <div class="container">
     <div class="page-header">
         <i class="fa-solid fa-file-invoice-dollar"></i>
-        <h2>Fines Payments</h2>
+        <h2>Fines Records</h2>
     </div>
     <div style="margin-bottom: 20px;">
         <div class="stat-card" style="max-width: 300px;">
@@ -850,20 +846,6 @@ function applyService(data) {
         <p style="margin: 0; font-size: 13px; color: #78350f;">Selected Fines: ${selectedFines.length}</p>
     </div>`;
     
-    // Added Total Hours input field
-    finesHtml += `<div style="padding: 15px; background: #f5f3ff; border-radius: 8px; border: 2px solid #8b5cf6; margin-bottom: 15px;">
-        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #1e3a5f; font-size: 15px;">
-            <i class="fa fa-clock"></i> Total Hours <span style="color: red;">*</span>
-        </label>
-        <input type="number" id="total_hours_input" class="swal2-input" 
-               style="width: 100%; margin: 0; padding: 12px; font-size: 16px; border: 2px solid #8b5cf6;" 
-               placeholder="Enter total hours for community service" 
-               step="0.5" min="0.5">
-        <p style="margin: 8px 0 0 0; font-size: 12px; color: #64748b;">
-            <i class="fa fa-info-circle"></i> This will be manually tracked for completion
-        </p>
-    </div>`;
-    
     finesHtml += `<div style="padding: 15px; background: #f5f3ff; border-radius: 8px; border: 2px solid #8b5cf6;">
         <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #1e3a5f; font-size: 15px;">
             <i class="fa fa-tag"></i> Total Discount Amount <span style="color: red;">*</span>
@@ -898,13 +880,7 @@ function applyService(data) {
         cancelButtonText: 'Cancel',
         cancelButtonColor: '#64748b',
         preConfirm: () => {
-            const totalHours = parseFloat(document.getElementById('total_hours_input').value) || 0;
             const totalDiscount = parseFloat(document.getElementById('total_discount_amount').value) || 0;
-            
-            if (totalHours <= 0) {
-                Swal.showValidationMessage('Please enter total hours for community service');
-                return false;
-            }
             
             if (totalDiscount <= 0) {
                 Swal.showValidationMessage('Please enter a discount amount');
@@ -922,11 +898,11 @@ function applyService(data) {
                 serviceDiscounts[fine.fines_id] = totalDiscount * proportion;
             });
             
-            return { totalHours: totalHours };
+            return true;
         }
     }).then((result) => {
         if (result.isConfirmed && selectedFines.length > 0) {
-            processServiceDiscount(data.student_id, data.fullname, result.value.totalHours);
+            processServiceDiscount(data.student_id, data.fullname);
         }
     });
 }
@@ -963,38 +939,43 @@ function updateTotalServiceDiscount(totalPenalty) {
         discountBreakdown.style.display = 'none';
     }
 }
-function processServiceDiscount(studentId, fullName, totalHours) {
+function updateServiceAmount(fineId, penaltyAmount) {
+    const discountInput = document.getElementById(`discount-${fineId}`);
+    const newAmountDisplay = document.getElementById(`new-amount-${fineId}`);
+    const discount = parseFloat(discountInput.value) || 0;
+    serviceDiscounts[fineId] = discount;
+    const newAmount = penaltyAmount - discount;
+    if (discount > 0) {
+        newAmountDisplay.innerHTML = `New Penalty Amount: <strong>₱${newAmount.toFixed(2)}</strong>`;
+    } else {
+        newAmountDisplay.innerHTML = '';
+    }
+    updateServiceTotalDisplay();
+}
+function updateServiceTotalDisplay() {
+    const totalDiscount = document.getElementById('serviceTotalDiscount');
+    let total = 0;
+    selectedFines.forEach(fine => {
+        total += (serviceDiscounts[fine.fines_id] || 0);
+    });
+    totalDiscount.textContent = '₱' + total.toFixed(2);
+}
+function processServiceDiscount(studentId, fullName) {
     const finesWithDiscount = selectedFines.map(fine => ({
         fines_id: fine.fines_id,
         penalty_amount: fine.penalty_amount,
         discount: serviceDiscounts[fine.fines_id] || 0,
         event_name: fine.event_name
     }));
-    
     let summaryHtml = '<ul style="text-align: left; margin: 10px 0; padding-left: 20px;">';
     finesWithDiscount.forEach(fine => {
         const newAmount = fine.penalty_amount - fine.discount;
         summaryHtml += `<li style="margin-bottom: 8px;"><strong>${fine.event_name}</strong><br><span style="color: #ef4444;">Original: ₱${fine.penalty_amount.toFixed(2)}</span> <span style="color: #8b5cf6;">- Discount: ₱${fine.discount.toFixed(2)}</span> <span style="color: #10b981;">= New: ₱${newAmount.toFixed(2)}</span></li>`;
     });
     summaryHtml += '</ul>';
-    
     Swal.fire({
         title: 'Confirm Service Discount',
-        html: `<div style="text-align: left; padding: 15px;">
-            <p style="margin-bottom: 8px;"><strong>Student:</strong> ${fullName}</p>
-            <p style="margin-bottom: 8px;"><strong>Student ID:</strong> ${studentId}</p>
-            <p style="margin-bottom: 8px;"><strong>Total Hours:</strong> <span style="color: #8b5cf6; font-weight: 700;">${totalHours} hours</span></p>
-            <hr style="margin: 12px 0;">
-            <p style="margin-bottom: 8px; font-weight: 600; color: #1e3a5f;">Service Discounts (${finesWithDiscount.length}):</p>
-            ${summaryHtml}
-            <hr style="margin: 12px 0;">
-            <p style="font-size: 13px; color: #64748b; margin: 0;">
-                <i class="fa fa-info-circle"></i> This will reduce the PenaltyAmount in the database
-            </p>
-            <p style="font-size: 13px; color: #64748b; margin: 8px 0 0 0;">
-                <i class="fa fa-clock"></i> Hours will be manually tracked (hours_completed defaults to 0)
-            </p>
-        </div>`,
+        html: `<div style="text-align: left; padding: 15px;"><p style="margin-bottom: 8px;"><strong>Student:</strong> ${fullName}</p><p style="margin-bottom: 8px;"><strong>Student ID:</strong> ${studentId}</p><hr style="margin: 12px 0;"><p style="margin-bottom: 8px; font-weight: 600; color: #1e3a5f;">Service Discounts (${finesWithDiscount.length}):</p>${summaryHtml}<hr style="margin: 12px 0;"><p style="font-size: 13px; color: #64748b; margin: 0;"><i class="fa fa-info-circle"></i> This will reduce the PenaltyAmount in the database</p></div>`,
         width: '600px',
         showCancelButton: true,
         confirmButtonColor: '#8b5cf6',
@@ -1003,11 +984,11 @@ function processServiceDiscount(studentId, fullName, totalHours) {
         cancelButtonText: '<i class="fa fa-times"></i> Cancel'
     }).then((result) => {
         if (result.isConfirmed) {
-            submitServiceDiscount(studentId, finesWithDiscount, totalHours);
+            submitServiceDiscount(studentId, finesWithDiscount);
         }
     });
 }
-function submitServiceDiscount(studentId, finesWithDiscount, totalHours) {
+function submitServiceDiscount(studentId, finesWithDiscount) {
     Swal.fire({
         title: 'Processing Service...',
         html: 'Please wait while we apply the service discount',
@@ -1017,37 +998,19 @@ function submitServiceDiscount(studentId, finesWithDiscount, totalHours) {
             Swal.showLoading();
         }
     });
-    
     const formData = new FormData();
     formData.append('action', 'apply_service_discount');
     formData.append('students_id', studentId);
     formData.append('selected_fines', JSON.stringify(finesWithDiscount));
-    formData.append('total_hours', totalHours);
-    
     fetch('fines.php', {
         method: 'POST',
         body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
+    }).then(response => response.json()).then(data => {
         if (data.success) {
             Swal.fire({
                 icon: 'success',
                 title: 'Service Discount Applied!',
-                html: `<div style="text-align: left; padding: 15px;">
-                    <p style="margin-bottom: 8px;"><strong>Fines Processed:</strong> ${data.fines_processed}</p>
-                    <p style="margin-bottom: 8px;"><strong>Total Hours Set:</strong> <span style="color: #8b5cf6; font-weight: 700;">${data.total_hours} hours</span></p>
-                    <hr style="margin: 12px 0;">
-                    <p style="font-size: 13px; color: #64748b; margin: 0;">
-                        <i class="fa fa-info-circle"></i> PenaltyAmount has been updated in the database
-                    </p>
-                    <p style="font-size: 13px; color: #64748b; margin: 8px 0 0 0;">
-                        <i class="fa fa-check-circle"></i> Service records saved to comservice table
-                    </p>
-                    <p style="font-size: 13px; color: #64748b; margin: 8px 0 0 0;">
-                        <i class="fa fa-clock"></i> hours_completed starts at 0 (manual tracking)
-                    </p>
-                </div>`,
+                html: `<div style="text-align: left; padding: 15px;"><p style="margin-bottom: 8px;"><strong>Fines Processed:</strong> ${data.fines_processed}</p><hr style="margin: 12px 0;"><p style="font-size: 13px; color: #64748b; margin: 0;"><i class="fa fa-info-circle"></i> PenaltyAmount has been updated in the database</p><p style="font-size: 13px; color: #64748b; margin: 8px 0 0 0;"><i class="fa fa-check-circle"></i> Service records have been saved to comservice table</p></div>`,
                 confirmButtonColor: '#8b5cf6',
                 confirmButtonText: '<i class="fa fa-check"></i> OK'
             }).then(() => {
@@ -1061,8 +1024,7 @@ function submitServiceDiscount(studentId, finesWithDiscount, totalHours) {
                 confirmButtonColor: '#ef4444'
             });
         }
-    })
-    .catch(error => {
+    }).catch(error => {
         Swal.fire({
             icon: 'error',
             title: 'Error',

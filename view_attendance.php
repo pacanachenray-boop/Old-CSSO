@@ -475,10 +475,10 @@ tbody tr:hover {
 // Function to go back to events
 function goBackToEvents() {
     if (window.top !== window.self) {
-        window.top.location.href = 'member_dashboard.php';
+        window.top.location.href = 'user_dashboard.php';
         sessionStorage.setItem('loadAttendance', 'true');
     } else {
-        window.location.href = 'member_dashboard.php';
+        window.location.href = 'user_dashboard.php';
         sessionStorage.setItem('loadAttendance', 'true');
     }
 }
